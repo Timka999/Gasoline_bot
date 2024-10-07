@@ -9,13 +9,36 @@ class Bot():
         # Добавление обработчиков при инициализации
         self.register_handlers()
 
+    def in_conversation(state:str):
+        def decorator(func):
+            async def wrapper(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+                if state == 'command':
+                    await func(self, update, context)
+                    # await update.message.reply_text('Декоратор отрабатывает успешно!')
+                    if context.user_data.get('in_conv', False):
+                        context.user_data['in_conv'] = False
+                        return ConversationHandler.END
+                elif state == 'conversation_handler':
+                    if context.user_data.get('in_conv', False):
+                        await update.message.reply_text('Пожалуйста, завершите предыдущее вычисление. Введите данные, которые запросил бот')
+                        return ConversationHandler.END
+                    else:
+                        context.user_data['in_conv'] = True
+                        return await func(self, update, context)
+                    
+            return wrapper
+
+        return decorator
+    
+    @in_conversation(state='command')
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+
         with open('Hello.txt', 'r') as file:
             welcome_message = file.read()
         await update.message.reply_text(welcome_message)
 
-        return ConversationHandler.END
     
+    @in_conversation(state='command')
     async def command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         with open('Hello.txt', 'r') as file:
             a = file.readlines()
@@ -24,6 +47,7 @@ class Bot():
 
         commands = "".join(a[2:])
         await update.message.reply_text(commands)
+    
     
     async def distance_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
@@ -48,7 +72,8 @@ class Bot():
             'Это должно выть число в километрах, например "99.4" (без кавычек), означает, что вы проехали 99.4 километра.'
             'Десятичная часть должна быть отделена точкой.'))
             return self.DISTANCE
-        
+
+       
     async def gasoline_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             gasoline = float(update.message.text)
@@ -61,13 +86,16 @@ class Bot():
             f"потратили {context.user_data['gasoline']} литров бензина.\nРасход бензина вашего автомобиля"
             f" равен {round(100*context.user_data['gasoline']/context.user_data['distance'] , 2)} литров/100 км."
             f"\nЧтобы вернуться к списку команд, нажмите /command.\nПриятного дня!"))
+            
         except Exception as e:
             await update.message.reply_text(('Пожалуйста, введите корректное значение. '
             'Это должно выть число в литрах, например "12.2" (без кавычек), означает, что вы проехали 12.2 километра. '
             'Десятичная часть должна быть отделена точкой.'))
             return self.GASOLINE
         
+        context.user_data['in_conv'] = False
         return ConversationHandler.END
+    
     
     async def gasoline_cost_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         pass
@@ -89,8 +117,8 @@ class Bot():
             ' отделена точкой.'))
             return self.COST
         
+        context.user_data['in_conv'] = False
         return ConversationHandler.END
-
 
     async def consumption_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
@@ -111,11 +139,13 @@ class Bot():
             'Десятичная часть должна быть отделена точкой.'))
             return self.CONSUMPTION
     
+    @in_conversation(state='conversation_handler')
     async def count_consumption(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
        context.user_data['state'] = 'count_consumption'
        await update.message.reply_text('Введите расстояние, которое вы проехали, в километрах, например 100.5:')
        return self.DISTANCE
     
+    @in_conversation(state='conversation_handler')
     async def count_money(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
        
        context.user_data['state'] = 'count_money'
@@ -125,6 +155,8 @@ class Bot():
     
     async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await update.message.reply_text("Операция отменена.")
+        
+        context.user_data['in_conv'] = False
         return ConversationHandler.END
 
     DISTANCE, GASOLINE, COST, CONSUMPTION = range(4)
@@ -155,6 +187,7 @@ class Bot():
         self.bot.add_handler(CommandHandler('command', self.command))
         self.bot.add_handler(conv_handler_1)
         self.bot.add_handler(conv_handler_2)
+
 
     def run(self):
         self.bot.run_polling()
