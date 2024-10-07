@@ -1,7 +1,7 @@
 from bot import Bot
 
 with open('TOKEN.txt', 'r') as file:
-    TOKEN = file.read()
+    TOKEN = file.read().strip()
 
 def main() -> None:
     

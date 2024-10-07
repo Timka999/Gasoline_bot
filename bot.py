@@ -1,13 +1,18 @@
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
+import pandas as pd
 
 class Bot():
 
     def __init__(self, TOKEN: str) -> None:
         self.TOKEN = TOKEN
         self.bot = ApplicationBuilder().token(TOKEN).build()
+        self.table = pd.read_csv('Russia_cities.csv', sep = ',')
         # Добавление обработчиков при инициализации
         self.register_handlers()
+
+    def normalize_city_name(self, city_name):
+        return city_name.lower().replace('ё', 'е')
 
     def in_conversation(state:str):
         def decorator(func):
@@ -158,10 +163,52 @@ class Bot():
         
         context.user_data['in_conv'] = False
         return ConversationHandler.END
+    
+    @in_conversation(state='conversation_handler')
+    async def distance(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text(('В нашей базе 196 крупных российских городов.'
+        ' К сожалению, это далеко не все российские города, поэтому вашего в ней может не оказаться.'))
+        await update.message.reply_text("Введите город отправления:")
+        return self.DEPARTURE
 
-    DISTANCE, GASOLINE, COST, CONSUMPTION = range(4)
-    
-    
+    async def departure_city(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        try:
+            dep_city = str(update.message.text)
+            if self.normalize_city_name(dep_city) in self.table.city.values:
+                context.user_data['dep_city'] = self.normalize_city_name(dep_city)
+                await update.message.reply_text("Введите город прибытия:")
+                return self.ARRIVAL
+            else:
+                await update.message.reply_text("К сожалению, такой город не найден.")
+                await self.command(update, context)
+                context.user_data['in_conv'] = False
+                return ConversationHandler.END
+        except Exception as e:
+            await update.message.reply_text("Пожалуйста, введите корректное значение.")
+            return self.DEPARTURE
+
+    async def arrival_city(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        try:
+            arr_city = str(update.message.text)
+            if self.normalize_city_name(arr_city) in self.table.city.values:
+                context.user_data['arr_city'] = self.normalize_city_name(arr_city)
+                dist = self.table[self.table.city == context.user_data['dep_city']][context.user_data['arr_city']].iloc[0]
+                await update.message.reply_text((f"Расстояние между городами {context.user_data['dep_city'].capitalize()}"
+                f" и {context.user_data['arr_city'].capitalize()} равно {dist} км."))
+                
+                context.user_data['in_conv'] = False
+                return ConversationHandler.END
+            else:
+                await update.message.reply_text("К сожалению, такой город не найден.")
+                await self.command(update, context)
+                context.user_data['in_conv'] = False
+                return ConversationHandler.END
+        except Exception as e:
+            await update.message.reply_text('Пожалуйста, введите корректное значение.')
+            return self.ARRIVAL
+
+    DISTANCE, GASOLINE, COST, CONSUMPTION, DEPARTURE, ARRIVAL = range(6)
+
     def register_handlers(self):
         
         conv_handler_1 = ConversationHandler(
@@ -183,10 +230,20 @@ class Bot():
         fallbacks=[CommandHandler("cancel", self.cancel)]
         )
 
+        conv_handler_3 = ConversationHandler(
+        entry_points=[CommandHandler('distance', self.distance)],
+        states={
+            self.DEPARTURE: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.departure_city)],
+            self.ARRIVAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.arrival_city)],
+        },
+        fallbacks=[CommandHandler("cancel", self.cancel)]
+        )
+
         self.bot.add_handler(CommandHandler('start', self.start))
         self.bot.add_handler(CommandHandler('command', self.command))
         self.bot.add_handler(conv_handler_1)
         self.bot.add_handler(conv_handler_2)
+        self.bot.add_handler(conv_handler_3)
 
 
     def run(self):
