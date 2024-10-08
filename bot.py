@@ -17,33 +17,29 @@ class Bot():
     def in_conversation(state:str):
         def decorator(func):
             async def wrapper(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-                if state == 'command':
-                    await func(self, update, context)
-                    # await update.message.reply_text('Декоратор отрабатывает успешно!')
-                    if context.user_data.get('in_conv', False):
-                        context.user_data['in_conv'] = False
-                        return ConversationHandler.END
-                elif state == 'conversation_handler':
+                if state == 'conversation_handler':
                     if context.user_data.get('in_conv', False):
                         await update.message.reply_text('Пожалуйста, завершите предыдущее вычисление. Введите данные, которые запросил бот')
                         return ConversationHandler.END
-                    else:
+                    else: 
                         context.user_data['in_conv'] = True
                         return await func(self, update, context)
-                    
+                elif state == 'command':
+                    result = await func(self, update, context)
+                    if result == ConversationHandler.END:
+                        context.user_data['in_conv'] = False
+                    return result
+
             return wrapper
 
         return decorator
     
-    @in_conversation(state='command')
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         with open('Hello.txt', 'r') as file:
             welcome_message = file.read()
         await update.message.reply_text(welcome_message)
 
-    
-    @in_conversation(state='command')
     async def command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         with open('Hello.txt', 'r') as file:
             a = file.readlines()
@@ -78,7 +74,7 @@ class Bot():
             'Десятичная часть должна быть отделена точкой.'))
             return self.DISTANCE
 
-       
+    @in_conversation(state='command')   
     async def gasoline_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             gasoline = float(update.message.text)
@@ -98,14 +94,24 @@ class Bot():
             'Десятичная часть должна быть отделена точкой.'))
             return self.GASOLINE
         
-        context.user_data['in_conv'] = False
         return ConversationHandler.END
     
-    
+    @in_conversation(state='command')
     async def gasoline_cost_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        pass
+        
+        message = update.message.text
+
         try:
-            cost = float(update.message.text)
+            if str(message).strip().lower() == 'дохуя':
+                await update.message.reply_text(('Димас, помни, что Небесный Отец посылает испытания, чтобы укрепить нас'
+                ' и помочь нам стать лучше. Все зависит от того, как мы будем принимать их. С этого момента у тебя всё'
+                ' будет получаться и твоё будущее будет светлым. Вводи стоимость бензина:'))
+                return self.COST
+        except Exception:
+            pass
+
+        try:
+            cost = float(message)
             if cost <= 0:
                 await update.message.reply_text(('Пожалуйста, введите корректное значение. '
                                                 'Оно не может быть отрицательным или равняться нулю.'))
@@ -122,7 +128,6 @@ class Bot():
             ' отделена точкой.'))
             return self.COST
         
-        context.user_data['in_conv'] = False
         return ConversationHandler.END
 
     async def consumption_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -158,10 +163,9 @@ class Bot():
                                        ' 100.5:'))
        return self.DISTANCE
     
+    @in_conversation(state='command')
     async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await update.message.reply_text("Операция отменена.")
-        
-        context.user_data['in_conv'] = False
         return ConversationHandler.END
     
     @in_conversation(state='conversation_handler')
@@ -171,6 +175,7 @@ class Bot():
         await update.message.reply_text("Введите город отправления:")
         return self.DEPARTURE
 
+    @in_conversation(state='command')
     async def departure_city(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             dep_city = str(update.message.text)
@@ -181,12 +186,12 @@ class Bot():
             else:
                 await update.message.reply_text("К сожалению, такой город не найден.")
                 await self.command(update, context)
-                context.user_data['in_conv'] = False
                 return ConversationHandler.END
         except Exception as e:
             await update.message.reply_text("Пожалуйста, введите корректное значение.")
             return self.DEPARTURE
 
+    @in_conversation(state='command')
     async def arrival_city(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             arr_city = str(update.message.text)
@@ -195,13 +200,10 @@ class Bot():
                 dist = self.table[self.table.city == context.user_data['dep_city']][context.user_data['arr_city']].iloc[0]
                 await update.message.reply_text((f"Расстояние между городами {context.user_data['dep_city'].capitalize()}"
                 f" и {context.user_data['arr_city'].capitalize()} равно {dist} км."))
-                
-                context.user_data['in_conv'] = False
                 return ConversationHandler.END
             else:
                 await update.message.reply_text("К сожалению, такой город не найден.")
                 await self.command(update, context)
-                context.user_data['in_conv'] = False
                 return ConversationHandler.END
         except Exception as e:
             await update.message.reply_text('Пожалуйста, введите корректное значение.')
