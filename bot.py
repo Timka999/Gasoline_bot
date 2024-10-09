@@ -1,14 +1,27 @@
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 import pandas as pd
+import logging
 
 class Bot():
 
-    def __init__(self, TOKEN: str) -> None:
+    def __init__(self, TOKEN: str, log_file :str ='bot.log') -> None:
         self.TOKEN = TOKEN
         self.bot = ApplicationBuilder().token(TOKEN).build()
         self.table = pd.read_csv('Russia_cities.csv', sep = ',')
-        # Добавление обработчиков при инициализации
+        # Создание логгера
+        self.logger_exp = logging.getLogger(self.__class__.__name__)
+        self.logger_exp.setLevel(logging.INFO)
+        # Создание обработчика для записи логов в файл
+        file_handler = logging.FileHandler(log_file, mode='a')
+        file_handler.setLevel(logging.INFO)
+        # Формат лог-сообщение
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
+        # Добавление обработчика логов
+        self.logger_exp.addHandler(file_handler)
+
+        # Добавление обработчиков бота при инициализации
         self.register_handlers()
 
     def normalize_city_name(self, city_name):
@@ -39,6 +52,8 @@ class Bot():
         with open('Hello.txt', 'r') as file:
             welcome_message = file.read()
         await update.message.reply_text(welcome_message)
+
+        self.logger_exp.info(f'Пользователь {update.effective_user} начал использовать бот.')
 
     async def command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         with open('Hello.txt', 'r') as file:
@@ -87,7 +102,7 @@ class Bot():
             f"потратили {context.user_data['gasoline']} литров бензина.\nРасход бензина вашего автомобиля"
             f" равен {round(100*context.user_data['gasoline']/context.user_data['distance'] , 2)} литров/100 км."
             f"\nЧтобы вернуться к списку команд, нажмите /command.\nПриятного дня!"))
-            
+            self.logger_exp.info(f"Пользователь {update.effective_user} успешно воспользовался командой /consumption.")
         except Exception as e:
             await update.message.reply_text(('Пожалуйста, введите корректное значение. '
             'Это должно выть число в литрах, например "12.2" (без кавычек), означает, что вы проехали 12.2 километра. '
@@ -106,6 +121,7 @@ class Bot():
                 await update.message.reply_text(('Димас, помни, что Небесный Отец посылает испытания, чтобы укрепить нас'
                 ' и помочь нам стать лучше. Все зависит от того, как мы будем принимать их. С этого момента у тебя всё'
                 ' будет получаться и твоё будущее будет светлым. Вводи стоимость бензина:'))
+                self.logger_exp.info(f"Пользователь {update.effective_user} успешно нашёл пасхалку.")
                 return self.COST
         except Exception:
             pass
@@ -122,6 +138,7 @@ class Bot():
             f" {round(cost*context.user_data['distance']*context.user_data['consumption']/100, 1)} рублей.\n"
             f"Чтобы вернуться к списку команд, нажмите /command.\n"
             f"Приятного дня!"))
+            self.logger_exp.info(f"Пользователь {update.effective_user} успешно воспользовался командой /money.")
         except Exception as e:
             await update.message.reply_text(('Пожалуйста, введите корректное значение. Это должно быть число в рублях,'
             ' например "40.0" (без кавычек), означает, что литр бензина стоит 40.0 рублей. Десятичная часть должна быть'
@@ -185,6 +202,7 @@ class Bot():
                 return self.ARRIVAL
             else:
                 await update.message.reply_text("К сожалению, такой город не найден.")
+                self.logger_exp.info(f"Пользователь {update.effective_user} не нашёл город отправления {dep_city}.")
                 await self.command(update, context)
                 return ConversationHandler.END
         except Exception as e:
@@ -200,14 +218,24 @@ class Bot():
                 dist = self.table[self.table.city == context.user_data['dep_city']][context.user_data['arr_city']].iloc[0]
                 await update.message.reply_text((f"Расстояние между городами {context.user_data['dep_city'].capitalize()}"
                 f" и {context.user_data['arr_city'].capitalize()} равно {dist} км."))
+                self.logger_exp.info((f"Пользователь {update.effective_user} запросил расстояние между городами "
+                                  f"{context.user_data['dep_city'].capitalize()}"
+                                  f" и {context.user_data['arr_city'].capitalize()}."))
                 return ConversationHandler.END
             else:
                 await update.message.reply_text("К сожалению, такой город не найден.")
+                self.logger_exp.info(f"Пользователь {update.effective_user} не нашёл город прибытия {arr_city}.")
                 await self.command(update, context)
                 return ConversationHandler.END
         except Exception as e:
             await update.message.reply_text('Пожалуйста, введите корректное значение.')
             return self.ARRIVAL
+
+    async def user_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        message = update.message.text
+        self.logger_exp.info(f"Пользователь {update.effective_user} отправил боту сообщение {message}")
+        await update.message.reply_text((f'{update.effective_user.first_name}, к сожалению, я пока не могу поддержать разговор.'
+                                         f' Для вывода поддерживаемых команд нажмите /command.'))
 
     DISTANCE, GASOLINE, COST, CONSUMPTION, DEPARTURE, ARRIVAL = range(6)
 
@@ -241,11 +269,12 @@ class Bot():
         fallbacks=[CommandHandler("cancel", self.cancel)]
         )
 
-        self.bot.add_handler(CommandHandler('start', self.start))
-        self.bot.add_handler(CommandHandler('command', self.command))
         self.bot.add_handler(conv_handler_1)
         self.bot.add_handler(conv_handler_2)
         self.bot.add_handler(conv_handler_3)
+        self.bot.add_handler(CommandHandler('start', self.start))
+        self.bot.add_handler(CommandHandler('command', self.command))
+        self.bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.user_message))
 
 
     def run(self):
