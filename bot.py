@@ -1,5 +1,6 @@
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
+from capitalize import capitalize_city_name
 import pandas as pd
 import logging
 
@@ -216,8 +217,8 @@ class Bot():
             if self.normalize_city_name(arr_city) in self.table.city.values:
                 context.user_data['arr_city'] = self.normalize_city_name(arr_city)
                 dist = self.table[self.table.city == context.user_data['dep_city']][context.user_data['arr_city']].iloc[0]
-                await update.message.reply_text((f"Расстояние между городами {context.user_data['dep_city'].capitalize()}"
-                f" и {context.user_data['arr_city'].capitalize()} равно {dist} км."))
+                await update.message.reply_text((f"Расстояние между городами {capitalize_city_name(context.user_data['dep_city'])}"
+                f" и {capitalize_city_name(context.user_data['arr_city'])} равно {dist} км."))
                 self.logger_exp.info((f"Пользователь {update.effective_user} запросил расстояние между городами "
                                   f"{context.user_data['dep_city'].capitalize()}"
                                   f" и {context.user_data['arr_city'].capitalize()}."))
